@@ -1,0 +1,26 @@
+[Unit]
+Description=NostrHost First-Boot Node Bootstrap
+After=network.target network-online.target
+Wants=network-online.target
+ConditionPathExists=!/etc/yunohost/installed
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStart=/bin/bash -c '\
+    echo "========================================================"; \
+    echo "  NostrHost First-Boot Initialization: Generating Keys  "; \
+    echo "========================================================"; \
+    /usr/bin/nostrhost postinstall new; \
+    if [ -f /etc/nostrhost/keys.recovery ]; then \
+        echo ""; \
+        echo ">>> RECOVERY KEYS BUNDLE (STORE OFFLINE SECURELY) <<<"; \
+        cat /etc/nostrhost/keys.recovery; \
+        echo "========================================================"; \
+    fi; \
+    systemctl disable nostrhost-firstboot.service'
+
+[Install]
+WantedBy=multi-user.target

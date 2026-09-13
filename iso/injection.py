@@ -497,9 +497,8 @@ def inject_files_into_iso(
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub")
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/grub.cfg")
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/theme")
-    os.system(f"chmod -R +w {path_to_extracted_iso_dir}/isolinux")
-
-    os.system(f"cp -r ./files_to_inject/* {path_to_extracted_iso_dir}/")
+    files_to_inject_dir = Path(__file__).resolve().parent.parent / "files_to_inject"
+    os.system(f"cp -r '{files_to_inject_dir}'/* '{path_to_extracted_iso_dir}/'")
     os.system(f'sed "s@__ARCH__@{arch}@g" -i "{path_to_extracted_iso_dir}/isolinux/menu.cfg"')
     os.system(f'sed "s@__DIST__@{dist}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
     os.system(f'sed "s@__TESTING__@{testing}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
@@ -513,7 +512,7 @@ def inject_files_into_iso(
     # This stuff gotta go into the initrd with cpio trick etc
     temp_file_dir = TemporaryDirectory()
     os.system(f"mkdir -p {temp_file_dir.name}/usr/share/graphics/")
-    os.system(f"cp ./files_to_inject/logo.png {temp_file_dir.name}/usr/share/graphics/logo_debian.png")
+    os.system(f"cp '{files_to_inject_dir}/logo.png' '{temp_file_dir.name}/usr/share/graphics/logo_debian.png'")
     append_file_contents_to_initrd_archive(
         path_to_extracted_iso_dir/f"install.{arch}"/"gtk"/"initrd.gz",
         temp_file_dir.name,

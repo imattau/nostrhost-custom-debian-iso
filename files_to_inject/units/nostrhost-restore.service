@@ -1,0 +1,45 @@
+[Unit]
+Description=NostrHost Node Recovery and State Restore
+After=network.target network-online.target local-fs.target
+Wants=network-online.target
+ConditionPathExists=!/etc/yunohost/installed
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStart=/bin/bash -c '\
+    echo "========================================================"; \
+    echo "  NostrHost Restore Mode: Scanning for Recovery Media   "; \
+    echo "========================================================"; \
+    FOUND=0; \
+    for dev in $(lsblk -rno NAME,FSTYPE 2>/dev/null | awk "\$2 ~ /ext|vfat|ntfs/ {print \$1}"); do \
+        MNT="/tmp/mnt_\$dev"; \
+        mkdir -p "\$MNT"; \
+        if mount "/dev/\$dev" "\$MNT" 2>/dev/null; then \
+            if [ -f "\$MNT/keys.recovery" ]; then \
+                echo "Found keys.recovery on /dev/\$dev"; \
+                BUNDLE_OPT=""; \
+                if [ -f "\$MNT/nostrhost-state.bundle" ]; then \
+                    BUNDLE_OPT="--bundle \$MNT/nostrhost-state.bundle"; \
+                fi; \
+                /usr/bin/nostrhost postinstall restore --keys-file "\$MNT/keys.recovery" \$BUNDLE_OPT; \
+                FOUND=1; \
+                umount "\$MNT"; \
+                break; \
+            fi; \
+            umount "\$MNT"; \
+        fi; \
+    done; \
+    if [ "\$FOUND" -eq 1 ]; then \
+        echo "Node restored successfully."; \
+        systemctl disable nostrhost-restore.service; \
+    else \
+        echo "No recovery media found on USB."; \
+        echo "To restore manually, run:"; \
+        echo "  sudo nostrhost postinstall restore --keys-file PATH [--bundle PATH | --state-relay URL]"; \
+    fi'
+
+[Install]
+WantedBy=multi-user.target

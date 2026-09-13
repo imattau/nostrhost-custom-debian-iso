@@ -126,13 +126,13 @@ def main():
             exit(1)
 
         if not path_to_output_file:
-            path_to_output_file = str(path_to_image_file).replace(".iso", "-modified.iso")
+            path_to_output_file = str(path_to_image_file).replace(".iso", "-nostrhost.iso")
 
         # inject the input files
         inject_files_into_iso(
             path_to_output_file,
             path_to_image_file,
-            iso_filesystem_name="YunoHost install image",
+            iso_filesystem_name="NostrHost install image",
             printer=p,
         )
 
