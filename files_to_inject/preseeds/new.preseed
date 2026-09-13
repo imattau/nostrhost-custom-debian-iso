@@ -34,7 +34,7 @@ d-i partman/confirm_nooverwrite boolean true
 d-i partman-lvm/confirm_nooverwrite boolean true
 
 ### Account setup
-d-i passwd/root-password-crypted password $1$6xBdkGvE$8nLCNRxwABespdFJniEiX0
+d-i passwd/root-password-crypted password __ROOT_PASSWORD_HASH__
 d-i passwd/make-user boolean false
 
 ### Base system installation

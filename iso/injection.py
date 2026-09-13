@@ -12,8 +12,10 @@ from tempfile import TemporaryDirectory
 import gzip
 import hashlib
 import re
+import secrets
 import shutil
 import subprocess
+from crypt import crypt, METHOD_SHA512
 
 from cli.clibella import Printer
 from core.utils import find_all_files_under
@@ -497,11 +499,24 @@ def inject_files_into_iso(
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub")
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/grub.cfg")
     os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/theme")
+    os.system(f"chmod -R +w {path_to_extracted_iso_dir}/isolinux")
     files_to_inject_dir = Path(__file__).resolve().parent.parent / "files_to_inject"
     os.system(f"cp -r '{files_to_inject_dir}'/* '{path_to_extracted_iso_dir}/'")
     os.system(f'sed "s@__ARCH__@{arch}@g" -i "{path_to_extracted_iso_dir}/isolinux/menu.cfg"')
     os.system(f'sed "s@__DIST__@{dist}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
     os.system(f'sed "s@__TESTING__@{testing}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
+
+    root_password = secrets.token_urlsafe(18)
+    root_password_hash = crypt(root_password, METHOD_SHA512)
+    for preseed_file in (path_to_extracted_iso_dir / "preseeds").iterdir():
+        contents = preseed_file.read_text()
+        preseed_file.write_text(
+            contents.replace("__ROOT_PASSWORD_HASH__", root_password_hash)
+        )
+    p.success(
+        f"Generated a random root password for this image: {root_password}\n"
+        "  Store it now - it is not printed again and is not saved to disk."
+    )
 
     os.system(f"chmod -w {path_to_extracted_iso_dir}/boot/grub")
     os.system(f"chmod -w -R {path_to_extracted_iso_dir}/boot/grub/theme")
