@@ -170,6 +170,46 @@ class Printer:
         print(prefix_str, end='', sep='', file=sys.stdout)
         return input(*args, **kwargs)
 
+    # Maps each public output-level method name to the Prefix object it
+    # prints with. Used by _level() so that info()/ok()/success()/etc. can
+    # stay thin, identically-shaped wrappers instead of each repeating the
+    # same call to _print_prefixed_output().
+    _LEVEL_PREFIXES = {
+        "info": _prefix_info,
+        "ok": _prefix_ok,
+        "success": _prefix_success,
+        "debug": _prefix_debug,
+        "warning": _prefix_warning,
+        "error": _prefix_error,
+        "failure": _prefix_failure,
+    }
+
+    def _level(self, level_name, *args, color_enabled=True, **kwargs):
+        """Prints the specified input with the named level's prefix prepended.
+
+        Looks up the Prefix object registered for 'level_name' in
+        '_LEVEL_PREFIXES' and delegates to '_print_prefixed_output()'.
+
+        Parameters
+        ----------
+        level_name : str
+            Key into '_LEVEL_PREFIXES' identifying which prefix to print.
+        *args : various
+            The printable object(s) to be printed.
+        color_enabled : Bool
+            Whether or not the prefix text is colored.
+        **kwargs : various
+            The same keywords which the builtin print() function accepts, with
+            the exception of the "file" argument.
+        """
+
+        self._print_prefixed_output(
+            self._LEVEL_PREFIXES[level_name],
+            *args,
+            color_enabled=color_enabled,
+            **kwargs
+        )
+
     def info(self, *args, color_enabled=True, **kwargs):
         """Prints the specified input with an "[INFO] " prefix prepended.
 
@@ -184,12 +224,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_info,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("info", *args, color_enabled=color_enabled, **kwargs)
 
     def ok(self, *args, color_enabled=True, **kwargs):
         """Prints the specified input with an "[OK] " prefix prepended.
@@ -205,12 +240,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_ok,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("ok", *args, color_enabled=color_enabled, **kwargs)
 
     def success(self, *args, color_enabled=True, **kwargs):
         """Prints the specified input with a "[SUCCESS] " prefix prepended.
@@ -226,12 +256,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_success,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("success", *args, color_enabled=color_enabled, **kwargs)
 
     def debug(self, *args, color_enabled=True, **kwargs):
         """Prints the specified input with a "[DEBUG] " prefix prepended.
@@ -247,12 +272,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_debug,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("debug", *args, color_enabled=color_enabled, **kwargs)
 
     def warning(self, *args, color_enabled=True, **kwargs):
         """Prints the specified output with a "[WARNING] " prefix prepended.
@@ -268,12 +288,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_warning,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("warning", *args, color_enabled=color_enabled, **kwargs)
 
     def error(self, *args, color_enabled=True, **kwargs):
         """Prints the specified output with an "[ERROR] " prefix prepended.
@@ -289,12 +304,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_error,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("error", *args, color_enabled=color_enabled, **kwargs)
 
     def failure(self, *args, color_enabled=True, **kwargs):
         """Prints the specified output with a "[FAILURE] " prefix prepended.
@@ -310,12 +320,7 @@ class Printer:
             the exception of the "file" argument.
         """
 
-        self._print_prefixed_output(
-            _prefix_failure,
-            *args,
-            color_enabled=color_enabled,
-            **kwargs
-        )
+        self._level("failure", *args, color_enabled=color_enabled, **kwargs)
 
     def input(self, *args, color_enabled=True, **kwargs):
         """Prompts the user for input with the "[PROMPT] " prefix prepended.
