@@ -6,7 +6,7 @@ inside the ISO and rebuilding bootable ISOs from directories on the
 local filesystem.
 
 """
-import os
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import gzip
@@ -19,6 +19,39 @@ from crypt import crypt, METHOD_SHA512
 
 from cli.clibella import Printer
 from core.utils import find_all_files_under
+
+
+@contextmanager
+def temporarily_writable(*paths, recursive=False):
+    """Temporarily makes the given paths writable, then reverts them.
+
+    Adds (and later removes) the owner-write bit on each of the given
+    paths using ``chmod``. Intended as a context manager wrapping code
+    which needs to modify otherwise read-only files or directories
+    extracted from an ISO.
+
+    Parameters
+    ----------
+    *paths : str or pathlike object
+        One or more paths to toggle write-permissions on.
+    recursive : bool
+        Whether to apply the permission changes recursively (``chmod -R``).
+
+    Examples
+    --------
+    with temporarily_writable("/tmp/isofiles/boot/grub", recursive=True):
+        ...  # modify files under boot/grub
+    """
+
+    str_paths = [str(path) for path in paths]
+    chmod_add_args = ["chmod"] + (["-R"] if recursive else []) + ["+w"] + str_paths
+    chmod_remove_args = ["chmod"] + (["-R"] if recursive else []) + ["-w"] + str_paths
+
+    subprocess.run(chmod_add_args, check=True)
+    try:
+        yield
+    finally:
+        subprocess.run(chmod_remove_args, check=True)
 
 
 def extract_iso(path_to_output_dir, path_to_input_file):
@@ -487,28 +520,42 @@ def inject_files_into_iso(
     dist = "bookworm" if "debian-12" in path_to_input_iso_file.name else "bullseye"
     testing = "" # To be set to literally "testing" for trixie later
 
+    files_to_inject_dir = Path(__file__).resolve().parent.parent / "files_to_inject"
+    install_arch_dir = path_to_extracted_iso_dir / f"install.{arch}"
+    boot_grub_dir = path_to_extracted_iso_dir / "boot" / "grub"
+    boot_grub_cfg = boot_grub_dir / "grub.cfg"
+    boot_grub_theme_dir = boot_grub_dir / "theme"
+    isolinux_dir = path_to_extracted_iso_dir / "isolinux"
+    preseeds_dir = path_to_extracted_iso_dir / "preseeds"
+
     # For some reason this 'xen' thing takes up an extra 50-70ish MB compared
     # to the original iso ... not sure to understand ... but doesn't seem to be
     # actually used anywhere so let's get rid of it to save space ...
-    os.system(f"chmod +w '{path_to_extracted_iso_dir}/install.{arch}'")
-    os.system(f"chmod -R +w '{path_to_extracted_iso_dir}/install.{arch}/xen'")
-    os.system(f"rm -rf '{path_to_extracted_iso_dir}/install.{arch}/xen'")
-    os.system(f"chmod -w '{path_to_extracted_iso_dir}/install.{arch}'")
+    with temporarily_writable(install_arch_dir):
+        subprocess.run(["chmod", "-R", "+w", str(install_arch_dir/"xen")], check=True)
+        shutil.rmtree(install_arch_dir/"xen")
 
     # Add the input files to the extracted ISO
-    os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub")
-    os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/grub.cfg")
-    os.system(f"chmod +w {path_to_extracted_iso_dir}/boot/grub/theme")
-    os.system(f"chmod -R +w {path_to_extracted_iso_dir}/isolinux")
-    files_to_inject_dir = Path(__file__).resolve().parent.parent / "files_to_inject"
-    os.system(f"cp -r '{files_to_inject_dir}'/* '{path_to_extracted_iso_dir}/'")
-    os.system(f'sed "s@__ARCH__@{arch}@g" -i "{path_to_extracted_iso_dir}/isolinux/menu.cfg"')
-    os.system(f'sed "s@__DIST__@{dist}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
-    os.system(f'sed "s@__TESTING__@{testing}@g" -i "{path_to_extracted_iso_dir}/preseeds/"*')
+    subprocess.run(["chmod", "+w", str(boot_grub_dir)], check=True)
+    subprocess.run(["chmod", "+w", str(boot_grub_cfg)], check=True)
+    subprocess.run(["chmod", "+w", str(boot_grub_theme_dir)], check=True)
+    subprocess.run(["chmod", "-R", "+w", str(isolinux_dir)], check=True)
+    subprocess.run(
+        ["cp", "-r", *(str(p) for p in sorted(files_to_inject_dir.glob("*"))),
+         str(path_to_extracted_iso_dir)],
+        check=True,
+    )
+    subprocess.run(
+        ["sed", f"s@__ARCH__@{arch}@g", "-i", str(isolinux_dir/"menu.cfg"), str(boot_grub_cfg)],
+        check=True,
+    )
+    preseed_files = sorted(str(p) for p in preseeds_dir.iterdir())
+    subprocess.run(["sed", f"s@__DIST__@{dist}@g", "-i", *preseed_files], check=True)
+    subprocess.run(["sed", f"s@__TESTING__@{testing}@g", "-i", *preseed_files], check=True)
 
     root_password = secrets.token_urlsafe(18)
     root_password_hash = crypt(root_password, METHOD_SHA512)
-    for preseed_file in (path_to_extracted_iso_dir / "preseeds").iterdir():
+    for preseed_file in preseeds_dir.iterdir():
         contents = preseed_file.read_text()
         preseed_file.write_text(
             contents.replace("__ROOT_PASSWORD_HASH__", root_password_hash)
@@ -518,16 +565,17 @@ def inject_files_into_iso(
         "  Store it now - it is not printed again and is not saved to disk."
     )
 
-    os.system(f"chmod -w {path_to_extracted_iso_dir}/boot/grub")
-    os.system(f"chmod -w -R {path_to_extracted_iso_dir}/boot/grub/theme")
-    os.system(f"chmod -w {path_to_extracted_iso_dir}/boot/grub/grub.cfg")
-    os.system(f"chmod -R -w {path_to_extracted_iso_dir}/isolinux")
-    os.system(f"chmod -R -w {path_to_extracted_iso_dir}/preseeds")
+    subprocess.run(["chmod", "-w", str(boot_grub_dir)], check=True)
+    subprocess.run(["chmod", "-w", "-R", str(boot_grub_theme_dir)], check=True)
+    subprocess.run(["chmod", "-w", str(boot_grub_cfg)], check=True)
+    subprocess.run(["chmod", "-R", "-w", str(isolinux_dir)], check=True)
+    subprocess.run(["chmod", "-R", "-w", str(preseeds_dir)], check=True)
 
     # This stuff gotta go into the initrd with cpio trick etc
     temp_file_dir = TemporaryDirectory()
-    os.system(f"mkdir -p {temp_file_dir.name}/usr/share/graphics/")
-    os.system(f"cp '{files_to_inject_dir}/logo.png' '{temp_file_dir.name}/usr/share/graphics/logo_debian.png'")
+    graphics_dir = Path(temp_file_dir.name)/"usr"/"share"/"graphics"
+    graphics_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(files_to_inject_dir/"logo.png", graphics_dir/"logo_debian.png")
     append_file_contents_to_initrd_archive(
         path_to_extracted_iso_dir/f"install.{arch}"/"gtk"/"initrd.gz",
         temp_file_dir.name,

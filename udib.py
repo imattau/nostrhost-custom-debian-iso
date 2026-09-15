@@ -112,7 +112,6 @@ def main():
     elif args.subparser_name == "inject":
 
         # verify image file path if set by user or download fresh iso if unset
-        temp_iso_dir = None
         if args.path_to_image_file:
             path_to_image_file = Path(args.path_to_image_file)
             if "~" in str(path_to_image_file):
@@ -135,10 +134,6 @@ def main():
             iso_filesystem_name="NostrHost install image",
             printer=p,
         )
-
-        # clear out temporary directory if one was created earlier
-        if temp_iso_dir:
-            temp_iso_dir.cleanup()
 
         exit(0)
 
