@@ -21,6 +21,33 @@ from cli.clibella import Printer
 from core.utils import find_all_files_under
 
 
+def chmod(mode, *paths, recursive=False):
+    """Runs ``chmod`` with the given mode flag on the given paths.
+
+    Thin wrapper around ``subprocess.run(["chmod", ...])`` using list
+    arguments (no shell-string interpolation), so it is safe for paths
+    containing spaces or other special characters.
+
+    Parameters
+    ----------
+    mode : str
+        The chmod mode argument, e.g. ``"+w"`` or ``"-w"``.
+    *paths : str or pathlike object
+        One or more paths to apply the chmod to.
+    recursive : bool
+        Whether to apply the permission change recursively (``chmod -R``).
+
+    Examples
+    --------
+    chmod("+w", "/tmp/isofiles/boot/grub/grub.cfg")
+    chmod("-w", "/tmp/isofiles/isolinux", recursive=True)
+    """
+
+    args = ["chmod"] + (["-R"] if recursive else []) + [mode]
+    args += [str(path) for path in paths]
+    subprocess.run(args, check=True)
+
+
 @contextmanager
 def temporarily_writable(*paths, recursive=False):
     """Temporarily makes the given paths writable, then reverts them.
@@ -43,15 +70,11 @@ def temporarily_writable(*paths, recursive=False):
         ...  # modify files under boot/grub
     """
 
-    str_paths = [str(path) for path in paths]
-    chmod_add_args = ["chmod"] + (["-R"] if recursive else []) + ["+w"] + str_paths
-    chmod_remove_args = ["chmod"] + (["-R"] if recursive else []) + ["-w"] + str_paths
-
-    subprocess.run(chmod_add_args, check=True)
+    chmod("+w", *paths, recursive=recursive)
     try:
         yield
     finally:
-        subprocess.run(chmod_remove_args, check=True)
+        chmod("-w", *paths, recursive=recursive)
 
 
 def extract_iso(path_to_output_dir, path_to_input_file):
@@ -532,14 +555,12 @@ def inject_files_into_iso(
     # to the original iso ... not sure to understand ... but doesn't seem to be
     # actually used anywhere so let's get rid of it to save space ...
     with temporarily_writable(install_arch_dir):
-        subprocess.run(["chmod", "-R", "+w", str(install_arch_dir/"xen")], check=True)
+        chmod("+w", install_arch_dir/"xen", recursive=True)
         shutil.rmtree(install_arch_dir/"xen")
 
     # Add the input files to the extracted ISO
-    subprocess.run(["chmod", "+w", str(boot_grub_dir)], check=True)
-    subprocess.run(["chmod", "+w", str(boot_grub_cfg)], check=True)
-    subprocess.run(["chmod", "+w", str(boot_grub_theme_dir)], check=True)
-    subprocess.run(["chmod", "-R", "+w", str(isolinux_dir)], check=True)
+    chmod("+w", boot_grub_dir, boot_grub_cfg, boot_grub_theme_dir)
+    chmod("+w", isolinux_dir, recursive=True)
     subprocess.run(
         ["cp", "-r", *(str(p) for p in sorted(files_to_inject_dir.glob("*"))),
          str(path_to_extracted_iso_dir)],
@@ -565,11 +586,8 @@ def inject_files_into_iso(
         "  Store it now - it is not printed again and is not saved to disk."
     )
 
-    subprocess.run(["chmod", "-w", str(boot_grub_dir)], check=True)
-    subprocess.run(["chmod", "-w", "-R", str(boot_grub_theme_dir)], check=True)
-    subprocess.run(["chmod", "-w", str(boot_grub_cfg)], check=True)
-    subprocess.run(["chmod", "-R", "-w", str(isolinux_dir)], check=True)
-    subprocess.run(["chmod", "-R", "-w", str(preseeds_dir)], check=True)
+    chmod("-w", boot_grub_dir, boot_grub_cfg)
+    chmod("-w", boot_grub_theme_dir, isolinux_dir, preseeds_dir, recursive=True)
 
     # This stuff gotta go into the initrd with cpio trick etc
     temp_file_dir = TemporaryDirectory()
